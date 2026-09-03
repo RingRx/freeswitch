@@ -2069,7 +2069,17 @@ static switch_status_t sofia_receive_message(switch_core_session_t *session, swi
 
 							nua_info(tech_pvt->nh, SIPTAG_CONTENT_TYPE_STR("message/sipfrag"),
 									 TAG_IF(!zstr(tech_pvt->user_via), SIPTAG_VIA_STR(tech_pvt->user_via)), SIPTAG_PAYLOAD_STR(message), TAG_END());
-						} else if (update_allowed && ua && (switch_stristr("polycom", ua) ||
+						/* RingRx: "polycom" widened to "poly" so it also covers the Poly Edge E
+						   series (PolyEdgeExxx), Poly Rove DECT and the Poly ATA; "obihai"
+						   added for the OBi phones/ATAs; "sip.js" and "ringrx" added for our
+						   web and mobile clients.  Without this the mid-call display update
+						   after a uuid_bridge (park orbit retrieve, pickup, transfer) is
+						   silently dropped on most of our fleet.  The update_allowed check
+						   above still gates on the UA advertising UPDATE in its Allow header. */
+						} else if (update_allowed && ua && (switch_stristr("poly", ua) ||
+									  switch_stristr("obihai", ua) ||
+									  switch_stristr("sip.js", ua) ||
+									  switch_stristr("ringrx", ua) ||
 									  (switch_stristr("aastra", ua) && !switch_stristr("Intelligate", ua)) ||
 									  (switch_stristr("cisco/spa50", ua) ||
 									  switch_stristr("cisco/spa525", ua)) ||

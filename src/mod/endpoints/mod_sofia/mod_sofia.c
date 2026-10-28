@@ -2069,13 +2069,9 @@ static switch_status_t sofia_receive_message(switch_core_session_t *session, swi
 
 							nua_info(tech_pvt->nh, SIPTAG_CONTENT_TYPE_STR("message/sipfrag"),
 									 TAG_IF(!zstr(tech_pvt->user_via), SIPTAG_VIA_STR(tech_pvt->user_via)), SIPTAG_PAYLOAD_STR(message), TAG_END());
-						/* RingRx: "polycom" widened to "poly" so it also covers the Poly Edge E
-						   series (PolyEdgeExxx), Poly Rove DECT and the Poly ATA; "obihai"
-						   added for the OBi phones/ATAs; "sip.js" and "ringrx" added for our
-						   web and mobile clients.  Without this the mid-call display update
-						   after a uuid_bridge (park orbit retrieve, pickup, transfer) is
-						   silently dropped on most of our fleet.  The update_allowed check
-						   above still gates on the UA advertising UPDATE in its Allow header. */
+						/* RingRx: Send the display UPDATE to Poly, OBi, SIP.js and RingRx clients.
+						   "poly" also matches the Poly Edge, Rove and ATA.
+						   The UA must also show UPDATE in its Allow header. */
 						} else if (update_allowed && ua && (switch_stristr("poly", ua) ||
 									  switch_stristr("obihai", ua) ||
 									  switch_stristr("sip.js", ua) ||
@@ -2088,13 +2084,32 @@ static switch_status_t sofia_receive_message(switch_core_session_t *session, swi
 									  switch_stristr("Yealink", ua) ||
 									  switch_stristr("Mitel", ua) ||
 									  switch_stristr("Panasonic", ua))) {
+							const char *remote_flow = switch_channel_get_variable(channel, "remote_audio_media_flow");
+							int use_local_sdp = 0;
+
 							snprintf(message, sizeof(message), "P-Asserted-Identity: \"%s\" <sip:%s@%s>", name, number, tech_pvt->profile->sipip);
+
+							/* RingRx: Do not change the media direction in a display UPDATE.
+							   The bridged leg can set this leg to inactive. The phone does not receive this change.
+							   If the phone sent sendrecv and FS does not hold the call, send sendrecv. */
+							if (sofia_use_soa(tech_pvt) &&
+								!switch_channel_test_flag(channel, CF_PROTO_HOLD) &&
+								(zstr(remote_flow) || !strcasecmp(remote_flow, "sendrecv")) &&
+								switch_core_session_media_flow(session, SWITCH_MEDIA_TYPE_AUDIO) != SWITCH_MEDIA_FLOW_SENDRECV) {
+								switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_DEBUG,
+												  "Display UPDATE: restoring sendrecv in re-offer (local flow was %s)\n",
+												  switch_str_nil(switch_channel_get_variable(channel, "audio_media_flow")));
+								switch_core_media_set_smode(session, SWITCH_MEDIA_TYPE_AUDIO, SWITCH_MEDIA_FLOW_SENDRECV, SDP_TYPE_REQUEST);
+								switch_core_media_gen_local_sdp(session, SDP_TYPE_REQUEST, NULL, 0, NULL, 1);
+								use_local_sdp = !zstr(tech_pvt->mparams.local_sdp_str);
+							}
 
 							sofia_set_flag_locked(tech_pvt, TFLAG_UPDATING_DISPLAY);
 							nua_update(tech_pvt->nh,
 									   NUTAG_SESSION_TIMER(tech_pvt->session_timeout),
 									   NUTAG_SESSION_REFRESHER(tech_pvt->session_refresher),
 									   NUTAG_UPDATE_REFRESH(tech_pvt->update_refresher),
+									   TAG_IF(use_local_sdp, SOATAG_USER_SDP_STR(tech_pvt->mparams.local_sdp_str)),
 									   TAG_IF(!zstr(tech_pvt->privacy), SIPTAG_PRIVACY_STR(tech_pvt->privacy)),
 									   TAG_IF(call_info, SIPTAG_CALL_INFO_STR(call_info)),
 									   TAG_IF(!zstr(tech_pvt->route_uri), NUTAG_PROXY(tech_pvt->route_uri)),

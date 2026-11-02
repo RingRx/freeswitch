@@ -3279,7 +3279,7 @@ int sofia_sip_stuck_add_dialog_callback(void *pArg, int argc, char **argv, char 
 		details->next = NULL;
 
 		if(!strcmp(type, "sip")) {
-			int status = check_sip_call_exist_or_not(argv[0]);
+			int status = check_sip_call_exist_or_not(argv[2]);
 			if(status == 0) {
 				char *sql = switch_mprintf("delete from sip_dialogs where call_id='%q'", argv[2]);
 				sofia_glue_execute_sql(profile, &sql, SWITCH_TRUE);
